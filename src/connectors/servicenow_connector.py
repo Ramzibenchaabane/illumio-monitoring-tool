@@ -22,6 +22,7 @@ class ServiceNowConnector(BaseAsyncConnector):
         api_user: str,
         api_key: str,
         table: str = "cmdb_ci_server",
+        verify_ssl: bool = True,
         page_size: int = 10000,
         max_concurrent_requests: int = 10,
         timeout: int = 60,
@@ -40,7 +41,8 @@ class ServiceNowConnector(BaseAsyncConnector):
             max_retries=max_retries,
             initial_delay=initial_delay,
             backoff_multiplier=backoff_multiplier,
-            max_delay=max_delay
+            max_delay=max_delay,
+            verify_ssl=verify_ssl
         )
         
         self.instance_url = instance_url.rstrip('/')
@@ -76,16 +78,26 @@ class ServiceNowConnector(BaseAsyncConnector):
         """Override to use Basic Auth if api_user looks like a username."""
         if self._session is None or self._session.closed:
             import aiohttp
+            import ssl
             
             if '@' not in self.api_user and len(self.api_key) < 100:
                 headers = self._get_basic_auth_headers()
             else:
                 headers = self._get_auth_headers()
             
+            # Create SSL context based on verify_ssl setting
+            if self.verify_ssl:
+                ssl_context = None  # Use default SSL verification
+            else:
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            
             connector = aiohttp.TCPConnector(
                 limit=self.max_concurrent_requests,
                 limit_per_host=self.max_concurrent_requests,
-                enable_cleanup_closed=True
+                enable_cleanup_closed=True,
+                ssl=ssl_context
             )
             self._session = aiohttp.ClientSession(
                 connector=connector,
@@ -351,6 +363,7 @@ async def create_servicenow_connector(config) -> ServiceNowConnector:
         api_user=config.servicenow.api_user,
         api_key=config.servicenow.api_key,
         table=config.servicenow.table,
+        verify_ssl=config.servicenow.verify_ssl,
         page_size=config.servicenow.page_size,
         max_concurrent_requests=config.servicenow.max_concurrent_requests,
         timeout=config.servicenow.timeout,

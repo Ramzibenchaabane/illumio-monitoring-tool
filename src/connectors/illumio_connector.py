@@ -24,6 +24,7 @@ class IllumioConnector(BaseAsyncConnector):
         api_user: str,
         api_secret: str,
         port: int = 8443,
+        verify_ssl: bool = True,
         page_size: int = 500,
         max_concurrent_requests: int = 15,
         timeout: int = 30,
@@ -41,7 +42,8 @@ class IllumioConnector(BaseAsyncConnector):
             max_retries=max_retries,
             initial_delay=initial_delay,
             backoff_multiplier=backoff_multiplier,
-            max_delay=max_delay
+            max_delay=max_delay,
+            verify_ssl=verify_ssl
         )
         
         self.api_user = api_user
@@ -281,6 +283,7 @@ async def create_illumio_connector(config) -> IllumioConnector:
         api_user=config.illumio.api_user,
         api_secret=config.illumio.api_secret,
         port=config.illumio.port,
+        verify_ssl=config.illumio.verify_ssl,
         page_size=config.illumio.page_size,
         max_concurrent_requests=config.illumio.max_concurrent_requests,
         timeout=config.illumio.timeout,

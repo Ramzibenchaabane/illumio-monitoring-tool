@@ -15,15 +15,19 @@ illumio:
   # Organization ID
   org_id: "1"
   
-  # API credentials - use environment variables for security
-  # Format: api_xxxxx (API user from PCE)
-  api_user: "${ILLUMIO_API_USER}"
-  
-  # API secret - MUST be set via environment variable
-  api_secret: "${ILLUMIO_API_SECRET}"
+  # API credentials
+  # Option 1: Use environment variables (recommended for security)
+  #   api_user: "${ILLUMIO_API_USER}"
+  #   api_secret: "${ILLUMIO_API_SECRET}"
+  # Option 2: Put values directly here (easier for testing)
+  api_user: "api_xxxxxxxxxxxxxxx"
+  api_secret: "your_api_secret_here"
   
   # PCE API port (default: 8443)
   port: 8443
+  
+  # SSL certificate verification (set to false for self-signed certs)
+  verify_ssl: false
   
   # Pagination settings for async requests
   page_size: 500
@@ -42,11 +46,18 @@ servicenow:
   instance_url: "https://company.service-now.com"
   
   # API credentials
-  api_user: "${SNOW_API_USER}"
-  api_key: "${SNOW_API_KEY}"
+  # Option 1: Use environment variables (recommended for security)
+  #   api_user: "${SNOW_API_USER}"
+  #   api_key: "${SNOW_API_KEY}"
+  # Option 2: Put values directly here (easier for testing)
+  api_user: "your_snow_user"
+  api_key: "your_snow_api_key"
   
   # Target table for server inventory
   table: "cmdb_ci_server"
+  
+  # SSL certificate verification (set to false for self-signed certs)
+  verify_ssl: false
   
   # Pagination settings
   page_size: 10000

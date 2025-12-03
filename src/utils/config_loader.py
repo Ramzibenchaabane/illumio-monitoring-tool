@@ -18,6 +18,7 @@ class IllumioConfig(BaseModel):
     api_user: str
     api_secret: str
     port: int = 8443
+    verify_ssl: bool = True
     page_size: int = 500
     max_concurrent_requests: int = 15
     timeout: int = 30
@@ -35,6 +36,7 @@ class ServiceNowConfig(BaseModel):
     api_user: str
     api_key: str
     table: str = "cmdb_ci_server"
+    verify_ssl: bool = True
     page_size: int = 10000
     max_concurrent_requests: int = 10
     timeout: int = 60

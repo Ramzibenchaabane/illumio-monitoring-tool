@@ -25,7 +25,8 @@ class BaseAsyncConnector(ABC):
         max_retries: int = 3,
         initial_delay: float = 1,
         backoff_multiplier: float = 2,
-        max_delay: float = 60
+        max_delay: float = 60,
+        verify_ssl: bool = True
     ):
         self.base_url = base_url.rstrip('/')
         self.max_concurrent_requests = max_concurrent_requests
@@ -34,6 +35,7 @@ class BaseAsyncConnector(ABC):
         self.initial_delay = initial_delay
         self.backoff_multiplier = backoff_multiplier
         self.max_delay = max_delay
+        self.verify_ssl = verify_ssl
         
         self._session: Optional[aiohttp.ClientSession] = None
         self._semaphore: Optional[asyncio.Semaphore] = None
@@ -76,10 +78,21 @@ class BaseAsyncConnector(ABC):
     async def _create_session(self):
         """Create aiohttp session and semaphore."""
         if self._session is None or self._session.closed:
+            import ssl
+            
+            # Create SSL context based on verify_ssl setting
+            if self.verify_ssl:
+                ssl_context = None  # Use default SSL verification
+            else:
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            
             connector = aiohttp.TCPConnector(
                 limit=self.max_concurrent_requests,
                 limit_per_host=self.max_concurrent_requests,
-                enable_cleanup_closed=True
+                enable_cleanup_closed=True,
+                ssl=ssl_context
             )
             self._session = aiohttp.ClientSession(
                 connector=connector,
