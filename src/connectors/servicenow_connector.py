@@ -201,65 +201,46 @@ class ServiceNowConnector(BaseAsyncConnector):
     ) -> List[Dict[str, Any]]:
         """
         Fetch all records using ServiceNow pagination.
-        ServiceNow uses sysparm_offset and sysparm_limit.
+        Uses sequential requests to avoid rate limiting.
         """
         all_data = []
         offset = 0
+        page_num = 1
         
         params['sysparm_limit'] = self.page_size
         
-        first_response = await self._request_with_retry(
-            'GET',
-            f"{self.base_url}/{self.table}",
-            params={**params, 'sysparm_offset': 0}
-        )
-        
-        if not first_response:
-            return []
-        
-        first_batch = first_response.get('result', [])
-        all_data.extend(first_batch)
-        
-        self.logger.info(f"First batch: {len(first_batch)} records")
-        
-        if len(first_batch) < self.page_size:
-            return all_data
-        
-        offset = self.page_size
-        
         while True:
-            tasks = []
-            for i in range(self.max_concurrent_requests):
-                current_offset = offset + (i * self.page_size)
-                
-                task = self._request_with_retry(
-                    'GET',
-                    f"{self.base_url}/{self.table}",
-                    params={**params, 'sysparm_offset': current_offset}
-                )
-                tasks.append(task)
+            self.logger.info(f"Fetching page {page_num} (offset={offset})...")
             
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            response = await self._request_with_retry(
+                'GET',
+                f"{self.base_url}/{self.table}",
+                params={**params, 'sysparm_offset': offset}
+            )
             
-            new_items = 0
-            for response in responses:
-                if isinstance(response, Exception):
-                    self.logger.error(f"Batch request failed: {response}")
-                    continue
-                
-                if response and 'result' in response:
-                    batch = response['result']
-                    all_data.extend(batch)
-                    new_items += len(batch)
-            
-            if new_items == 0:
+            if response is None:
+                self.logger.error(f"Failed to fetch page {page_num}. Stopping.")
                 break
             
-            offset += len(tasks) * self.page_size
-            self.logger.info(f"Progress: {len(all_data)} records fetched")
+            batch = response.get('result', [])
             
-            if new_items < len(tasks) * self.page_size:
+            if not batch:
+                self.logger.info(f"No more data at page {page_num}. Fetch complete.")
                 break
+            
+            all_data.extend(batch)
+            self.logger.info(f"Page {page_num}: got {len(batch)} records (total: {len(all_data)})")
+            
+            # If we got less than page_size, we've reached the end
+            if len(batch) < self.page_size:
+                self.logger.info(f"Last page reached (got {len(batch)} < {self.page_size})")
+                break
+            
+            offset += self.page_size
+            page_num += 1
+            
+            # Small delay between requests
+            await asyncio.sleep(0.2)
         
         return all_data
     

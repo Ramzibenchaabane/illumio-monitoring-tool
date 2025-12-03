@@ -5,6 +5,7 @@ Provides common functionality for retry logic, rate limiting, and async HTTP req
 
 import asyncio
 import aiohttp
+import ssl
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -78,8 +79,6 @@ class BaseAsyncConnector(ABC):
     async def _create_session(self):
         """Create aiohttp session and semaphore."""
         if self._session is None or self._session.closed:
-            import ssl
-            
             # Create SSL context based on verify_ssl setting
             if self.verify_ssl:
                 ssl_context = None  # Use default SSL verification
@@ -126,8 +125,9 @@ class BaseAsyncConnector(ABC):
             JSON response as dict, or None if all retries failed
         """
         delay = self.initial_delay
+        max_total_attempts = 5  # Total attempts including rate limit retries
         
-        for attempt in range(self.max_retries):
+        for attempt in range(max_total_attempts):
             try:
                 async with self._semaphore:
                     self.stats['requests_made'] += 1
@@ -138,12 +138,14 @@ class BaseAsyncConnector(ABC):
                             return await response.json()
                         
                         elif response.status == 429:
-                            retry_after = int(response.headers.get('Retry-After', 60))
+                            self.stats['retries'] += 1
+                            retry_after = int(response.headers.get('Retry-After', 30))
                             self.logger.warning(
-                                f"Rate limited. Waiting {retry_after}s before retry."
+                                f"Rate limited (attempt {attempt + 1}/{max_total_attempts}). "
+                                f"Waiting {retry_after}s before retry."
                             )
                             await asyncio.sleep(retry_after)
-                            self.stats['retries'] += 1
+                            # Continue to next iteration
                             continue
                         
                         elif response.status in (401, 403):
@@ -154,10 +156,13 @@ class BaseAsyncConnector(ABC):
                             return None
                         
                         elif response.status >= 500:
-                            self.logger.warning(
-                                f"Server error {response.status}. Attempt {attempt + 1}/{self.max_retries}"
-                            )
                             self.stats['retries'] += 1
+                            self.logger.warning(
+                                f"Server error {response.status}. Attempt {attempt + 1}/{max_total_attempts}"
+                            )
+                            await asyncio.sleep(delay)
+                            delay = min(delay * self.backoff_multiplier, self.max_delay)
+                            continue
                         
                         else:
                             text = await response.text()
@@ -168,23 +173,23 @@ class BaseAsyncConnector(ABC):
                             return None
             
             except asyncio.TimeoutError:
-                self.logger.warning(
-                    f"Request timeout. Attempt {attempt + 1}/{self.max_retries}"
-                )
                 self.stats['retries'] += 1
+                self.logger.warning(
+                    f"Request timeout. Attempt {attempt + 1}/{max_total_attempts}"
+                )
+                await asyncio.sleep(delay)
+                delay = min(delay * self.backoff_multiplier, self.max_delay)
             
             except aiohttp.ClientError as e:
-                self.logger.warning(
-                    f"Client error: {e}. Attempt {attempt + 1}/{self.max_retries}"
-                )
                 self.stats['retries'] += 1
-            
-            if attempt < self.max_retries - 1:
+                self.logger.warning(
+                    f"Client error: {e}. Attempt {attempt + 1}/{max_total_attempts}"
+                )
                 await asyncio.sleep(delay)
                 delay = min(delay * self.backoff_multiplier, self.max_delay)
         
         self.stats['requests_failed'] += 1
-        self.logger.error(f"All {self.max_retries} retry attempts failed for {url}")
+        self.logger.error(f"All {max_total_attempts} attempts failed for {url}")
         return None
     
     async def _paginated_fetch(
@@ -194,11 +199,11 @@ class BaseAsyncConnector(ABC):
         params: Optional[Dict[str, Any]] = None,
         data_key: Optional[str] = None,
         offset_param: str = "offset",
-        limit_param: str = "limit",
-        total_key: Optional[str] = None
+        limit_param: str = "limit"
     ) -> List[Dict[str, Any]]:
         """
-        Fetch all pages of data from a paginated API endpoint.
+        Fetch all pages of data sequentially (one request at a time).
+        Simple and reliable - won't trigger rate limiting.
         
         Args:
             endpoint: API endpoint (without base URL)
@@ -207,87 +212,54 @@ class BaseAsyncConnector(ABC):
             data_key: Key in response containing the data array (None if response is array)
             offset_param: Name of the offset parameter
             limit_param: Name of the limit parameter
-            total_key: Key in response containing total count (for progress tracking)
             
         Returns:
             List of all fetched items
         """
         all_data = []
         offset = 0
-        total_items = None
+        page_num = 1
         
         params = params or {}
         params[limit_param] = page_size
         
-        first_response = await self._request_with_retry(
-            'GET',
-            f"{self.base_url}{endpoint}",
-            params={**params, offset_param: 0}
-        )
-        
-        if not first_response:
-            return []
-        
-        if data_key:
-            first_batch = first_response.get(data_key, [])
-            if total_key:
-                total_items = first_response.get(total_key)
-        else:
-            first_batch = first_response if isinstance(first_response, list) else []
-        
-        all_data.extend(first_batch)
-        
-        if len(first_batch) < page_size:
-            return all_data
-        
-        offset = page_size
-        
-        if total_items:
-            remaining_pages = (total_items - page_size + page_size - 1) // page_size
-            self.logger.info(f"Fetching {remaining_pages} additional pages...")
-        
         while True:
-            tasks = []
-            for i in range(self.max_concurrent_requests):
-                current_offset = offset + (i * page_size)
-                if total_items and current_offset >= total_items:
-                    break
-                    
-                task = self._request_with_retry(
-                    'GET',
-                    f"{self.base_url}{endpoint}",
-                    params={**params, offset_param: current_offset}
-                )
-                tasks.append(task)
+            self.logger.info(f"Fetching page {page_num} (offset={offset})...")
             
-            if not tasks:
+            response = await self._request_with_retry(
+                'GET',
+                f"{self.base_url}{endpoint}",
+                params={**params, offset_param: offset}
+            )
+            
+            if response is None:
+                self.logger.error(f"Failed to fetch page {page_num}. Stopping pagination.")
                 break
             
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            # Extract data from response
+            if data_key:
+                batch = response.get(data_key, [])
+            else:
+                batch = response if isinstance(response, list) else []
             
-            new_items = 0
-            for response in responses:
-                if isinstance(response, Exception):
-                    self.logger.error(f"Batch request failed: {response}")
-                    continue
-                    
-                if response:
-                    if data_key:
-                        batch = response.get(data_key, [])
-                    else:
-                        batch = response if isinstance(response, list) else []
-                    
-                    all_data.extend(batch)
-                    new_items += len(batch)
-            
-            if new_items == 0:
+            # No data = we're done
+            if not batch:
+                self.logger.info(f"No more data at page {page_num}. Fetch complete.")
                 break
             
-            offset += len(tasks) * page_size
+            all_data.extend(batch)
+            self.logger.info(f"Page {page_num}: got {len(batch)} items (total: {len(all_data)})")
             
-            if total_items:
-                progress = min(100, (len(all_data) / total_items) * 100)
-                self.logger.info(f"Progress: {len(all_data)}/{total_items} ({progress:.1f}%)")
+            # If we got less than page_size, we've reached the end
+            if len(batch) < page_size:
+                self.logger.info(f"Last page reached (got {len(batch)} < {page_size})")
+                break
+            
+            offset += page_size
+            page_num += 1
+            
+            # Delay between requests to avoid rate limiting
+            await asyncio.sleep(1.0)
         
         return all_data
     

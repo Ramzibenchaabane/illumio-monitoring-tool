@@ -29,14 +29,15 @@ illumio:
   # SSL certificate verification (set to false for self-signed certs)
   verify_ssl: false
   
-  # Pagination settings for async requests
+  # Pagination settings
+  # Illumio default max is 500, but some PCE configs allow more
   page_size: 500
   
-  # Maximum concurrent API requests (adjust based on PCE capacity)
-  max_concurrent_requests: 15
+  # Maximum concurrent API requests (keep at 1 for sequential)
+  max_concurrent_requests: 1
   
   # Request timeout in seconds
-  timeout: 30
+  timeout: 60
 
 # -----------------------------------------------------------------------------
 # ServiceNow CMDB Configuration
