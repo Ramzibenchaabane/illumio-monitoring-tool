@@ -1,0 +1,177 @@
+# =============================================================================
+# Illumio Monitoring Tool - Configuration File
+# =============================================================================
+# This configuration file contains all settings for the Illumio deployment
+# monitoring tool. Sensitive values can be set via environment variables.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Illumio PCE Configuration
+# -----------------------------------------------------------------------------
+illumio:
+  # PCE URL (without trailing slash)
+  pce_url: "https://pce.company.com"
+  
+  # Organization ID
+  org_id: "1"
+  
+  # API credentials - use environment variables for security
+  # Format: api_xxxxx (API user from PCE)
+  api_user: "${ILLUMIO_API_USER}"
+  
+  # API secret - MUST be set via environment variable
+  api_secret: "${ILLUMIO_API_SECRET}"
+  
+  # PCE API port (default: 8443)
+  port: 8443
+  
+  # Pagination settings for async requests
+  page_size: 500
+  
+  # Maximum concurrent API requests (adjust based on PCE capacity)
+  max_concurrent_requests: 15
+  
+  # Request timeout in seconds
+  timeout: 30
+
+# -----------------------------------------------------------------------------
+# ServiceNow CMDB Configuration
+# -----------------------------------------------------------------------------
+servicenow:
+  # Instance URL (without trailing slash)
+  instance_url: "https://company.service-now.com"
+  
+  # API credentials
+  api_user: "${SNOW_API_USER}"
+  api_key: "${SNOW_API_KEY}"
+  
+  # Target table for server inventory
+  table: "cmdb_ci_server"
+  
+  # Pagination settings
+  page_size: 10000
+  
+  # Maximum concurrent API requests
+  max_concurrent_requests: 10
+  
+  # Request timeout in seconds
+  timeout: 60
+
+# -----------------------------------------------------------------------------
+# Filtering Configuration
+# -----------------------------------------------------------------------------
+filtering:
+  # Filter servers where Operating Entity contains this string (case-insensitive)
+  # Example: "ACCENTURE", "FINANCE-PROD", "IT-EMEA"
+  operating_entity_contains: "ACCENTURE"
+
+# -----------------------------------------------------------------------------
+# Data Normalization
+# -----------------------------------------------------------------------------
+normalization:
+  # Convert hostnames to uppercase for matching
+  hostname_uppercase: true
+
+# -----------------------------------------------------------------------------
+# Output Configuration
+# -----------------------------------------------------------------------------
+output:
+  # Base path for all outputs (relative or absolute)
+  base_path: "./outputs"
+  
+  # Subfolder for Excel extractions
+  extracts_folder: "extracts"
+  
+  # Subfolder for PDF reports
+  reports_folder: "reports"
+  
+  # Create date-based subfolder (DD-MM-YYYY)
+  create_date_subfolder: true
+  
+  # File prefix for all generated files
+  file_prefix: "illumio_monitoring"
+
+# -----------------------------------------------------------------------------
+# Logging Configuration
+# -----------------------------------------------------------------------------
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+  
+  # Log file path
+  file: "./logs/illumio_monitor.log"
+  
+  # Maximum log file size in MB before rotation
+  max_size_mb: 50
+  
+  # Number of backup log files to keep
+  backup_count: 7
+  
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# -----------------------------------------------------------------------------
+# Branding Configuration (for PDF reports)
+# -----------------------------------------------------------------------------
+branding:
+  # Company name for reports
+  company: "Accenture"
+  
+  # Accenture brand colors
+  primary_color: "#A100FF"      # Accenture Purple
+  secondary_color: "#000000"    # Black
+  accent_color: "#FFFFFF"       # White
+  
+  # Additional colors for charts
+  chart_colors:
+    - "#A100FF"  # Purple
+    - "#7B00C4"  # Dark Purple
+    - "#460073"  # Deeper Purple
+    - "#000000"  # Black
+    - "#808080"  # Gray
+    - "#B3B3B3"  # Light Gray
+  
+  # Logo file path (PNG format recommended)
+  logo_path: "./assets/accenture_logo.png"
+  
+  # Font family for reports
+  font_family: "Arial"
+  
+  # Footer text for confidentiality
+  footer_text: "Confidential - Accenture Internal Use Only"
+
+# -----------------------------------------------------------------------------
+# Retry Configuration
+# -----------------------------------------------------------------------------
+retry:
+  # Maximum number of retry attempts
+  max_attempts: 3
+  
+  # Initial delay between retries (seconds)
+  initial_delay: 1
+  
+  # Multiplier for exponential backoff
+  backoff_multiplier: 2
+  
+  # Maximum delay between retries (seconds)
+  max_delay: 60
+
+# -----------------------------------------------------------------------------
+# Report Configuration
+# -----------------------------------------------------------------------------
+reports:
+  # Include these reports in generation
+  generate:
+    deployment_dashboard: true
+    agent_health: true
+    gap_analysis: true
+    executive_summary: true
+  
+  # Number of top items to show in rankings
+  top_n_items: 20
+  
+  # Threshold for "offline" status (hours without heartbeat)
+  offline_threshold_hours: 24
+  
+  # VEN versions considered outdated (list versions to flag)
+  outdated_ven_versions: []
